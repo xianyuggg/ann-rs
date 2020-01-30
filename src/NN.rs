@@ -1,20 +1,48 @@
 use ann_lib::NeuronLayer;
 use std::intrinsics::expf64;
 
-pub fn train_epoch(src: Vec<f64>, nn: &mut ANN, image_size: usize, image_num: usize ) {
+// currently output size is 10
+pub fn train_epoch(input: Vec<f64>, output: Vec<f64>, nn: &mut ANN, img_num: usize, img_size: usize) {
+
+    for i in 0..img_num {
+        let net_input = input[i * img_size..(i+1) * img_size].iter().map(|val| *val).collect();
+        let net_output = input[i * 4..(i+1) * 4].iter().map(|val| *val).collect();
+        nn.training(net_input, net_output);
+        println!("Training {}th image, error : {}",i, nn.error_sum);
+        nn.error_sum = 0.0;
+    }
 
 }
 
-struct ANN {
-    num_input : usize,
-    num_output : usize,
-    num_hidden_layers : usize,
-    lr : f64, // learning rate
-    error_sum : f64,
-    neuron_layers : Vec<NeuronLayer>
+pub struct ANN {
+    pub num_input : usize,
+    pub num_output : usize,
+    pub num_hidden_layers : usize,
+    pub lr : f64, // learning rate
+    pub error_sum : f64,
+    pub neuron_layers : Vec<NeuronLayer>
 }
 
 impl ANN {
+
+    pub fn add_neuron_layer(&mut self, neuron_num: usize) {
+
+        let num_input_per_neuron = if self.neuron_layers.is_empty() {
+            self.num_input
+        } else {
+            self.neuron_layers.iter().last().unwrap().neuron_num
+        };
+        self.neuron_layers.push(
+           NeuronLayer::new(neuron_num, num_input_per_neuron)
+        );
+
+        self.num_hidden_layers = if !self.neuron_layers.is_empty() {
+            self.neuron_layers.len() - 1
+        }else {
+            0
+        }
+    }
+
     fn sigmoid_activate(activation : f64) -> f64 {
         (1.0 / (1.0 + unsafe { expf64(-activation) }))
     }
@@ -24,15 +52,16 @@ impl ANN {
         let neurons = &mut nl.neurons;
         for i in 0..num_neuron {
             let mut tmp = 0.0;
-            for (idx, n) in neurons.iter().enumerate() {
-                tmp += n.weights[idx] * input[idx];
+            for j in 0..neurons[i].weights.len() - 1 {
+                tmp += neurons[i].weights[j] * input[j];
             }
+            tmp += *neurons[i].weights.last().unwrap();
             neurons[i].out_activation = ANN::sigmoid_activate(tmp);
         }
     }
 
     // propagate from left to right
-    fn process(&mut self, mut input: Vec<f64>, output: &mut Vec<f64>) {
+    pub fn process(&mut self, mut input: Vec<f64>, output: &mut Vec<f64>) {
         self.neuron_layers.iter_mut().for_each( |layer| {
             ANN::update_neuron_layer(layer, &input);
             input = layer.neurons.iter().map(|n| n.out_activation).collect();
@@ -78,6 +107,7 @@ impl ANN {
     }
 
     fn training(&mut self, input : Vec<f64>, target: Vec<f64>) {
+        println!("Training!");
         ANN::train_update(self, input.clone(), target);
 
         for idx in (0..self.neuron_layers.len()).rev() {
